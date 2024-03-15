@@ -1,0 +1,12 @@
+# Logging and Paths
+wandb_proj: metalbinding # Weights and Biases project to log results to.
+wandb_save: True # Whether or not to log to Weights and Biases.
+model_save_dir: ./best_models # Location to save best models
+data_dir: ../../Project/mionic_dataset/mionic_train.csv # Location of training data
+rep_dir: ../../Project/mionic_dataset/train_embeddings/ # Location of ESM2 embeddings of each protein
+truth_dir: ../../Project/m-ionic/data/pos_data/multi_ion.pkl
+
+# Training
+epochs: 50 # Number of epochs to train for
+batch_size: 10 # Size of batch for binary data set
+shuffle: True # Whether to shuffle training data before batching
