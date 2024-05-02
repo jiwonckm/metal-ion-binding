@@ -162,9 +162,11 @@ class ProteinClassifier(nn.Module):
         logits_SO4 = self.FC_SO4_2(F.leaky_relu(self.FC_SO4_1(h_V)))
         logits_ZN = self.FC_ZN_2(F.leaky_relu(self.FC_ZN_1(h_V)))
 
-        logits = torch.cat((logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN), 1)
+        return (logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN)
+
+        # logits = torch.cat((logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN), 1)
         
-        return logits
+        # return logits
 
 # class ProteinClassifier(nn.Module):
 #     def __init__(self, input_shape=2560, output_shape=10, embedding_dim=256):
@@ -221,13 +223,18 @@ def main(config):
             optimizer.zero_grad()
             
             outputs = model(inputs, mask=None)
-            loss = loss_fn(outputs, labels)
+
+            loss = 0
+            for output, label in zip(outputs, [labels[:, i] for i in range(labels.size(1))]):
+                loss += loss_fn(torch.squeeze(output), label)
             loss.backward()
             optimizer.step()
-    
             running_loss += loss.item()
             
             labels = labels.to(torch.int64)
+            m = nn.Sigmoid()
+            outputs = m(torch.cat(outputs, 1))
+            
             aupr = metric(outputs, labels)
             x = batch_metric(outputs, labels)
             
@@ -285,7 +292,7 @@ def main(config):
     # Model and Optimizer
     model = ProteinClassifier()
     model = model.to(device)
-    loss_fn = torch.nn.CrossEntropyLoss()
+    loss_fn = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
     # Initialize wandb
@@ -322,9 +329,16 @@ def main(config):
                 vinputs = vinputs.to(device)
                 vlabels = vlabels.to(device)
                 voutputs = model(vinputs, mask=None)
-                vloss = loss_fn(voutputs, vlabels)
+
+                vloss = 0
+                for output, label in zip(voutputs, [vlabels[:, i] for i in range(vlabels.size(1))]):
+                    vloss += loss_fn(torch.squeeze(output), label)
                 running_vloss += vloss
+                
                 vlabels = vlabels.to(torch.int64)
+                m = nn.Sigmoid()
+                voutputs = m(torch.cat(voutputs, 1))
+                
                 vaupr = val_metric(voutputs, vlabels)
     
                 wandb.log({'val/loss': vloss})
