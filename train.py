@@ -162,11 +162,10 @@ class ProteinClassifier(nn.Module):
         logits_SO4 = self.FC_SO4_2(F.leaky_relu(self.FC_SO4_1(h_V)))
         logits_ZN = self.FC_ZN_2(F.leaky_relu(self.FC_ZN_1(h_V)))
 
-        return (logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN)
-
-        # logits = torch.cat((logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN), 1)
+        # return (logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN)
+        logits = torch.cat((logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN), 1)
         
-        # return logits
+        return logits
 
 # class ProteinClassifier(nn.Module):
 #     def __init__(self, input_shape=2560, output_shape=10, embedding_dim=256):
@@ -224,21 +223,21 @@ def main(config):
             
             outputs = model(inputs, mask=None)
 
-            loss = 0
-            for output, label in zip(outputs, [labels[:, i] for i in range(labels.size(1))]):
-                loss += loss_fn(torch.squeeze(output), label)
+            loss = loss_fn(outputs, labels)
+            # for output, label in zip(outputs, [labels[:, i] for i in range(labels.size(1))]):
+            #     loss += loss_fn(torch.squeeze(output), label)
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
             
             labels = labels.to(torch.int64)
             m = nn.Sigmoid()
-            outputs = m(torch.cat(outputs, 1))
+            outputs = m(outputs)
             
             aupr = metric(outputs, labels)
             x = batch_metric(outputs, labels)
             
-            if i%1000 == 999:
+            if i%100 == 99:
                 last_loss = running_loss / 1000
                 print('   batch {} loss: {}'.format(i+1, last_loss))
     
@@ -292,7 +291,7 @@ def main(config):
     # Model and Optimizer
     model = ProteinClassifier()
     model = model.to(device)
-    loss_fn = torch.nn.BCEWithLogitsLoss()
+    loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
     # Initialize wandb
@@ -312,7 +311,7 @@ def main(config):
     
         model.train(True)
         avg_loss, aupr = train_one_epoch(epoch, device)
-        x = {'train/loss': avg_loss}
+        x = {'train/loss': avg_loss, 'epoch': epoch}
         for i, ion in enumerate(ions):
             x[f'train/aupr_{ion}'] = float(aupr[i])
     
@@ -330,14 +329,14 @@ def main(config):
                 vlabels = vlabels.to(device)
                 voutputs = model(vinputs, mask=None)
 
-                vloss = 0
-                for output, label in zip(voutputs, [vlabels[:, i] for i in range(vlabels.size(1))]):
-                    vloss += loss_fn(torch.squeeze(output), label)
+                vloss = loss_fn(voutputs, vlabels)
+                # for output, label in zip(voutputs, [vlabels[:, i] for i in range(vlabels.size(1))]):
+                #     vloss += loss_fn(torch.squeeze(output), label)
                 running_vloss += vloss
                 
                 vlabels = vlabels.to(torch.int64)
                 m = nn.Sigmoid()
-                voutputs = m(torch.cat(voutputs, 1))
+                voutputs = m(voutputs)
                 
                 vaupr = val_metric(voutputs, vlabels)
     
@@ -348,7 +347,7 @@ def main(config):
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
         print('AUPR train {} valid {}'.format(torch.mean(aupr).item(), torch.mean(vaupr).item()))
 
-        x = {'val/avg_loss': avg_vloss, 'epoch':epoch}
+        x = {'val/avg_loss': avg_vloss, 'epoch': epoch}
         for i, ion in enumerate(ions):
             x[f'val/aupr_{ion}'] = float(vaupr[i])
         wandb.log(x)

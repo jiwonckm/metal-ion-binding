@@ -9,7 +9,7 @@ from tqdm import tqdm
 class MionicDataset(Dataset):
     def __init__(self, csv_file, rep_dir, truth_dir):
         self.data = pd.read_csv(csv_file)
-        # self.data = self.data.sample(n=100, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN
+        self.data = self.data.sample(n=300, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN
         self.truth_vals = pk.load(open(truth_dir, 'rb'))
         self.rep_dir = rep_dir
 
