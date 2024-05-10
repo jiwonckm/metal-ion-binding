@@ -231,25 +231,24 @@ def main(config):
             running_loss += loss.item()
             
             labels = labels.to(torch.int64)
-            m = nn.Sigmoid()
-            outputs = m(outputs)
             
             aupr = metric(outputs, labels)
-            x = batch_metric(outputs, labels)
+            # batch_aupr = batch_metric(outputs, labels)
             
             if i%100 == 99:
                 last_loss = running_loss / 1000
                 print('   batch {} loss: {}'.format(i+1, last_loss))
     
-                batch_aupr = batch_metric.compute()
                 x = {'train/batch_loss': last_loss}
-                for i, ion in enumerate(ions):
-                    x[f'train/batch_aupr_{ion}'] = float(batch_aupr[i].detach().cpu())
+                
+                # batch_aupr = batch_metric.compute()
+                # for i, ion in enumerate(ions):
+                #     x[f'train/batch_aupr_{ion}'] = float(batch_aupr[i].detach().cpu())
                 
                 wandb.log(x)
                 
                 running_loss = 0
-                batch_metric.reset()
+                # batch_metric.reset()
                 
         aupr = metric.compute()
         return last_loss, aupr
@@ -335,17 +334,15 @@ def main(config):
                 running_vloss += vloss
                 
                 vlabels = vlabels.to(torch.int64)
-                m = nn.Sigmoid()
-                voutputs = m(voutputs)
                 
                 vaupr = val_metric(voutputs, vlabels)
     
-                wandb.log({'val/loss': vloss})
+                # wandb.log({'val/loss': vloss})
     
         avg_vloss = running_vloss / (i+1)
         vaupr = val_metric.compute()
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
-        print('AUPR train {} valid {}'.format(torch.mean(aupr).item(), torch.mean(vaupr).item()))
+        print('avg AUPR train {} valid {}'.format(torch.mean(aupr).item(), torch.mean(vaupr).item()))
 
         x = {'val/avg_loss': avg_vloss, 'epoch': epoch}
         for i, ion in enumerate(ions):
