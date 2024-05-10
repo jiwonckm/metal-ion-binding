@@ -1,7 +1,7 @@
 import torch
 import torchvision
 from datetime import datetime
-from dataloader import MionicDataset
+from dataloader import MionicDataset, MionicDatamodule
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 import torch.nn as nn
 import torch.nn.functional as F
@@ -167,92 +167,48 @@ class ProteinClassifier(nn.Module):
         
         return logits
 
-# class ProteinClassifier(nn.Module):
-#     def __init__(self, input_shape=2560, output_shape=10, embedding_dim=256):
-#         super(ProteinClassifier, self).__init__()
-#         self.fc1 = nn.Linear(input_shape, 120)
-#         self.fc2 = nn.Linear(120, 84)
-        
-#         self.cls_head = nn.Linear(84, output_shape)
+def train_one_epoch(epoch_index, device, model, train_loader, loss_fn, optimizer):
+    metric = MultilabelAveragePrecision(num_labels=10, average=None, thresholds=None)
+    metric.to(device)
+    batch_metric = MultilabelAveragePrecision(num_labels=10, average=None, thresholds=None)
+    batch_metric.to(device)
 
-#         self.ca_head = nn.Linear(84, 1)
-#         self.co_head = nn.Linear(84, 1)
-#         self.cu_head = nn.Linear(84, 1)
-#         self.fe2_head = nn.Linear(84, 1)
-#         self.fe_head = nn.Linear(84, 1)
-#         self.mg_head = nn.Linear(84, 1)
-#         self.mn_head = nn.Linear(84, 1)
-#         self.po4_head = nn.Linear(84, 1)
-#         self.so4_head = nn.Linear(84, 1)
-#         self.zn_head = nn.Linear(84, 1)
-
-#         self.sigmoid = nn.Sigmoid()
-
-#     def forward(self, x):
-#         # shape of x is (batch)x(2 * feature_dim)
-#         x = F.relu(self.fc1(x))
-#         x = F.relu(self.fc2(x))
-#         x = self.cls_head(x)
-#         x = self.sigmoid(x)
-#         return x
-
-def collate_fn(batch):
-    features, labels = zip(*batch)
-    features = torch.stack(features, 0)
-    labels = torch.stack(labels, 0)
+    n = 0
+    avg_loss = 0
     
-    return features, labels
+    for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
+        
+        inputs, labels = data
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        optimizer.zero_grad()
+        
+        outputs = model(inputs, mask=None)
+        
+        loss = loss_fn(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        loss = loss.item()
+
+        b = len(inputs)
+        n += b
+        delta = b * (loss - avg_loss)
+        avg_loss += delta / n
+        
+        labels = labels.to(torch.int64)
+        aupr = metric(outputs, labels)
+        # batch_aupr = batch_metric(outputs, labels)
+        
+        if i%100 == 99:
+            print('   batch {} loss: {}'.format(i+1, avg_loss))
+            x = {'train/batch_loss': avg_loss}
+            wandb.log(x)
+            
+    aupr = metric.compute()
+    return avg_loss, aupr
 
 def main(config):
     
-    def train_one_epoch(epoch_index, device):
-        metric = MultilabelAveragePrecision(num_labels=10, average=None, thresholds=None)
-        metric.to(device)
-        batch_metric = MultilabelAveragePrecision(num_labels=10, average=None, thresholds=None)
-        batch_metric.to(device)
-        
-        running_loss = 0
-        last_loss = 0
-        
-        for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
-            
-            inputs, labels = data
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            optimizer.zero_grad()
-            
-            outputs = model(inputs, mask=None)
-
-            loss = loss_fn(outputs, labels)
-            # for output, label in zip(outputs, [labels[:, i] for i in range(labels.size(1))]):
-            #     loss += loss_fn(torch.squeeze(output), label)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-            
-            labels = labels.to(torch.int64)
-            
-            aupr = metric(outputs, labels)
-            # batch_aupr = batch_metric(outputs, labels)
-            
-            if i%100 == 99:
-                last_loss = running_loss / 1000
-                print('   batch {} loss: {}'.format(i+1, last_loss))
-    
-                x = {'train/batch_loss': last_loss}
-                
-                # batch_aupr = batch_metric.compute()
-                # for i, ion in enumerate(ions):
-                #     x[f'train/batch_aupr_{ion}'] = float(batch_aupr[i].detach().cpu())
-                
-                wandb.log(x)
-                
-                running_loss = 0
-                # batch_metric.reset()
-                
-        aupr = metric.compute()
-        return last_loss, aupr
-
     # Set CUDA device
     if (config.device == 'cpu') or (not torch.cuda.is_available()):
         device = torch.device('cpu')
@@ -261,37 +217,44 @@ def main(config):
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    # Load DataModule
-    dataset = MionicDataset(config.data_dir, config.rep_dir, config.truth_dir)
-    train_set, val_set = random_split(dataset, [0.8, 0.2], generator=torch.Generator().manual_seed(42))
+    # # Load DataModule
+    # dataset = MionicDataset(config.data_dir, config.rep_dir, config.truth_dir)
+    # train_set, val_set = random_split(dataset, [0.8, 0.2], generator=torch.Generator().manual_seed(42))
 
-    # Balance the data
-    train_labels = torch.stack([train_set.dataset.labels[train_set.dataset.ids[i]] for i in train_set.indices])
-    negative_count = torch.sum(torch.all(train_labels == 0, dim=1))   # number of negative labels
-    negative_weight = 0.5 / negative_count
-    ion_count = torch.sum(train_labels, dim=0)                        # 10-d vector of count of each ions
-    ion_weight = 0.05 / ion_count
+    # # Balance the data
+    # train_labels = torch.stack([train_set.dataset.labels[train_set.dataset.ids[i]] for i in train_set.indices])
+    # negative_count = torch.sum(torch.all(train_labels == 0, dim=1))   # number of negative labels
+    # negative_weight = 0.5 / negative_count
+    # ion_count = torch.sum(train_labels, dim=0)                        # 10-d vector of count of each ions
+    # ion_weight = 0.05 / ion_count
     
-    weights = []
-    for row in train_labels:
-        weight = torch.sum(row * ion_weight)
-        if weight==0: 
-            weight = negative_weight
-        weights.append(weight)
-    weights = torch.tensor(weights)
-    sampler = WeightedRandomSampler(weights=weights, num_samples=len(train_set), replacement=False)
+    # weights = []
+    # for row in train_labels:
+    #     weight = torch.sum(row * ion_weight)
+    #     if weight==0: 
+    #         weight = negative_weight
+    #     weights.append(weight)
+    # weights = torch.tensor(weights)
+    # sampler = WeightedRandomSampler(weights=weights, num_samples=len(train_set), replacement=False)
 
-    # Load DataLoaders
-    batch_size = config.batch_size
-    shuffle = config.shuffle
-    train_loader = DataLoader(train_set, batch_size=batch_size, collate_fn=collate_fn, sampler=sampler)
-    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+    # # Load DataLoaders
+    # batch_size = config.batch_size
+    # shuffle = config.shuffle
+    # train_loader = DataLoader(train_set, batch_size=batch_size, collate_fn=collate_fn, sampler=sampler)
+    # val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
+
+    dm = MionicDatamodule(config.data_dir, config.rep_dir, config.truth_dir, config.batch_size)
+    ion_weights = dm.setup()
+    train_loader = dm.train_dataloader()
+    val_loader = dm.val_dataloader()
+    test_loader = dm.test_dataloader()
     
     # Model and Optimizer
     model = ProteinClassifier()
     model = model.to(device)
-    loss_fn = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    ion_weights = ion_weights.to(device)
+    loss_fn = torch.nn.CrossEntropyLoss(weight = ion_weights)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
 
     # Initialize wandb
     wandb.login()
@@ -309,16 +272,14 @@ def main(config):
         print('EPOCH {}:'.format(epoch))
     
         model.train(True)
-        avg_loss, aupr = train_one_epoch(epoch, device)
+        avg_loss, aupr = train_one_epoch(epoch, device, model, train_loader, loss_fn, optimizer)
         x = {'train/loss': avg_loss, 'epoch': epoch}
         for i, ion in enumerate(ions):
             x[f'train/aupr_{ion}'] = float(aupr[i])
-    
         wandb.log(x)
-    
-        running_vloss = 0
+        
+        avg_vloss = 0
         model.eval()
-    
         val_metric.reset()
         
         with torch.no_grad():
@@ -328,18 +289,16 @@ def main(config):
                 vlabels = vlabels.to(device)
                 voutputs = model(vinputs, mask=None)
 
-                vloss = loss_fn(voutputs, vlabels)
-                # for output, label in zip(voutputs, [vlabels[:, i] for i in range(vlabels.size(1))]):
-                #     vloss += loss_fn(torch.squeeze(output), label)
-                running_vloss += vloss
+                vloss = loss_fn(voutputs, vlabels).item()
+                vdelta = len(vinputs) * (vloss - avg_vloss)
+                avg_vloss += vdelta / len(vinputs)
                 
                 vlabels = vlabels.to(torch.int64)
                 
                 vaupr = val_metric(voutputs, vlabels)
     
                 # wandb.log({'val/loss': vloss})
-    
-        avg_vloss = running_vloss / (i+1)
+        
         vaupr = val_metric.compute()
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
         print('avg AUPR train {} valid {}'.format(torch.mean(aupr).item(), torch.mean(vaupr).item()))
