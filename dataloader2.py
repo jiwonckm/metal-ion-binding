@@ -36,8 +36,10 @@ class MionicDataset(Dataset):
                             labels.append(0)
                         else:
                             labels.append(int(truths[ion][i]))
+                    labels.append(0)
                 else:
                     labels = [0]*10
+                    labels.append(1)
                 labels = torch.tensor(labels, dtype=torch.float32)
          
                 self.labels[f'{ID}_{i}'] = labels

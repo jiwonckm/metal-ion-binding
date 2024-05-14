@@ -175,7 +175,7 @@ def train_one_epoch(epoch_index, device, model, train_loader, loss_fn, optimizer
 
     n = 0
     avg_loss = 0
-    
+
     for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
         
         inputs, labels = data
@@ -228,7 +228,7 @@ def main(config):
     model = ProteinClassifier()
     model = model.to(device)
     ion_weights = ion_weights.to(device)
-    loss_fn = torch.nn.CrossEntropyLoss(weight = ion_weights)
+    loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
 
     # Initialize wandb
@@ -272,7 +272,7 @@ def main(config):
                 
                 vaupr = val_metric(voutputs, vlabels)
     
-                # wandb.log({'val/loss': vloss})
+                wandb.log({'val/loss': vloss})
         
         vaupr = val_metric.compute()
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
