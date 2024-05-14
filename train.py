@@ -217,32 +217,7 @@ def main(config):
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    # # Load DataModule
-    # dataset = MionicDataset(config.data_dir, config.rep_dir, config.truth_dir)
-    # train_set, val_set = random_split(dataset, [0.8, 0.2], generator=torch.Generator().manual_seed(42))
-
-    # # Balance the data
-    # train_labels = torch.stack([train_set.dataset.labels[train_set.dataset.ids[i]] for i in train_set.indices])
-    # negative_count = torch.sum(torch.all(train_labels == 0, dim=1))   # number of negative labels
-    # negative_weight = 0.5 / negative_count
-    # ion_count = torch.sum(train_labels, dim=0)                        # 10-d vector of count of each ions
-    # ion_weight = 0.05 / ion_count
-    
-    # weights = []
-    # for row in train_labels:
-    #     weight = torch.sum(row * ion_weight)
-    #     if weight==0: 
-    #         weight = negative_weight
-    #     weights.append(weight)
-    # weights = torch.tensor(weights)
-    # sampler = WeightedRandomSampler(weights=weights, num_samples=len(train_set), replacement=False)
-
-    # # Load DataLoaders
-    # batch_size = config.batch_size
-    # shuffle = config.shuffle
-    # train_loader = DataLoader(train_set, batch_size=batch_size, collate_fn=collate_fn, sampler=sampler)
-    # val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
-
+    # Load DataLoaders
     dm = MionicDatamodule(config.data_dir, config.rep_dir, config.truth_dir, config.batch_size)
     ion_weights = dm.setup()
     train_loader = dm.train_dataloader()
