@@ -1,7 +1,7 @@
 import torch
 import torchvision
 from datetime import datetime
-from dataloader import MionicDataset, MionicDatamodule
+from dataloader2 import MionicDataset, MionicDatamodule
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 import torch.nn as nn
 import torch.nn.functional as F
@@ -179,17 +179,31 @@ def train_one_epoch(epoch_index, device, model, train_loader, loss_fn, optimizer
 
     n = 0
     avg_loss = 0
+
+    j=0
     
     for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
+
+        # j+=1
+        # if j>10:
+        #     break
         
         inputs, labels = data
         inputs = inputs.to(device)
         labels = labels.to(device)
         optimizer.zero_grad()
+
+        # print("Input:", inputs)
+        # print(inputs.shape)
+        # print("Labels:", labels)
+        # print(labels.shape)
         
         outputs = model(inputs, mask=None)
+        # print("Output:", outputs)
+        # print(outputs.shape)
         
         loss = loss_fn(outputs, labels)
+        # print("Loss:", loss)
         loss.backward()
         optimizer.step()
         loss = loss.item()
@@ -198,6 +212,7 @@ def train_one_epoch(epoch_index, device, model, train_loader, loss_fn, optimizer
         n += b
         delta = b * (loss - avg_loss)
         avg_loss += delta / n
+        # print("Avg loss:", avg_loss)
         
         labels = labels.to(torch.int64)
         aupr = metric(outputs, labels)
@@ -222,7 +237,7 @@ def main(config):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     # Load DataLoaders
-    dm = MionicDatamodule(config.data_dir, config.rep_dir, config.truth_dir, config.batch_size)
+    dm = MionicDatamodule(config.data_dir, config.rep_dir, config.truth_dir, config.batch_size, config.shuffle)
     ion_weights = dm.setup()
     train_loader = dm.train_dataloader()
     val_loader = dm.val_dataloader()
@@ -233,11 +248,11 @@ def main(config):
     model = model.to(device)
     ion_weights = ion_weights.to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
 
     # Initialize wandb
     wandb.login()
-    wandb.init(project=config.wandb_proj, name=config.run_name)
+    wandb.init(project=config.wandb_proj, name=config.run_name, config=dict(config))
 
     # Metric
     val_metric = MultilabelAveragePrecision(num_labels=len(ions), average=None, thresholds=None)
@@ -275,14 +290,12 @@ def main(config):
                 vlabels = vlabels.to(torch.int64)
                 
                 vaupr = val_metric(voutputs, vlabels)
-    
-                wandb.log({'val/loss': vloss})
         
         vaupr = val_metric.compute()
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
         print('avg AUPR train {} valid {}'.format(torch.mean(aupr).item(), torch.mean(vaupr).item()))
 
-        x = {'val/avg_loss': avg_vloss, 'epoch': epoch}
+        x = {'val/loss': avg_vloss, 'epoch': epoch}
         for i, ion in enumerate(ions):
             x[f'val/aupr_{ion}'] = float(vaupr[i])
         wandb.log(x)
