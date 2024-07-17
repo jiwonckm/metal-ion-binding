@@ -7,6 +7,9 @@ rep_dir: ../../Project/mionic_dataset/train_embeddings/ # Location of ESM2 embed
 truth_dir: ../../Project/m-ionic/data/pos_data/multi_ion.pkl
 
 # Training
-epochs: 50 # Number of epochs to train for
+epochs: 30 # Number of epochs to train for
 batch_size: 128 # Size of batch for binary data set
 shuffle: True # Whether to shuffle training data before batching
+clr: 1e-4 # contrastive step lr
+lr: 1e-5 # classifier step lr
+contrastive: True # Whether or not to do the contrastive step
