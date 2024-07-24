@@ -1,7 +1,6 @@
 import torch
 import torchvision
 from datetime import datetime
-from dataloader2 import MionicDataset, MionicDatamodule
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 import torch.nn as nn
 import torch.nn.functional as F
@@ -130,7 +129,7 @@ class TransformerEncoder(nn.Module):
 
 
 class IonClassifier(nn.Module):
-    def __init__():
+    def __init__(self, hidden_dim=128):
         super(IonClassifier, self).__init__()
 
         # ion-specific layers

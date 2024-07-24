@@ -13,3 +13,5 @@ shuffle: True # Whether to shuffle training data before batching
 clr: 1e-4 # contrastive step lr
 lr: 1e-5 # classifier step lr
 contrastive: True # Whether or not to do the contrastive step
+num_samples: 1000 # number of samples we want to look at for non-contrastive step
+con_num_samples: 1000

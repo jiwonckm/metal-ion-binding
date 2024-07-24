@@ -1,7 +1,7 @@
 import torch
 import torchvision
 from datetime import datetime
-from dataloader import MionicDataset, MionicDatamodule, 
+from dataloader import MionicDataset, MionicDatamodule, ConDatamodule
 from model import TransformerEncoder, IonClassifier
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 import torch.nn as nn
@@ -66,12 +66,18 @@ def main(config):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     # Load DataLoaders
-    dm = MionicDatamodule(config.data_dir, config.rep_dir, config.truth_dir, config.batch_size, config.shuffle)
-    ion_weights = dm.setup()
-    ion_weights = ion_weights.to(device)
+    dataset = MionicDataset(config.data_dir, config.rep_dir, config.truth_dir)
+    dm = MionicDatamodule(dataset, config.batch_size, config.shuffle, config.num_samples)
+    dm.setup()
+    # ion_weights = dm.setup()
+    # ion_weights = ion_weights.to(device)
     train_loader = dm.train_dataloader()
     val_loader = dm.val_dataloader()
     test_loader = dm.test_dataloader()
+    
+    cdm = ConDatamodule(dataset, config.batch_size, config.shuffle, config.con_num_samples)
+    cdm.setup()
+    contrastive_generator = cdm.train_dataloader()
     
     # Model and Optimizer
     cmodel = TransformerEncoder()
@@ -103,13 +109,6 @@ def main(config):
     for epoch in range(EPOCHS):
         print('EPOCH {}:'.format(epoch))
 
-        # Main Step
-        avg_loss, aupr = train_one_epoch(epoch, device, model, train_loader, loss_fn, optimizer)
-        x = {'train/loss': avg_loss, 'epoch': epoch}
-        for i, ion in enumerate(ions):
-            x[f'train/aupr_{ion}'] = float(aupr[i])
-        wandb.log(x)
-
         # Contrastive Step
         if config.contrastive:
             cmodel.train(True)
@@ -138,7 +137,7 @@ def main(config):
             
             inputs, labels = data
             inputs = cmodel(inputs.to(device))
-            labels = cmodel(labels.to(device))
+            labels = labels.to(device)
             
             outputs = model(inputs)
 
@@ -178,7 +177,7 @@ def main(config):
             for i, vdata in enumerate(val_loader):
                 vinputs, vlabels = data
                 vinputs = cmodel(vinputs.to(device))
-                vlabels = cmodel(vlabels.to(device))
+                vlabels = vlabels.to(device)
                 
                 voutputs = model(vinputs)
 
