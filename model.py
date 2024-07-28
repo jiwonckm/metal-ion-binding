@@ -80,7 +80,7 @@ class TransformerLayer(nn.Module):
         return h_V
 
 
-class TransformerEncoder(nn.Module):
+class IonBindingModel(nn.Module):
     def __init__(self, feature_dim=2560, hidden_dim=128, num_encoder_layers=4, num_heads=4, augment_eps=0.05, dropout=0.2):
         super(TransformerEncoder, self).__init__()
 
@@ -107,30 +107,6 @@ class TransformerEncoder(nn.Module):
             TransformerLayer(hidden_dim, num_heads, dropout)
             for _ in range(num_encoder_layers)
         ])
-  
-        # Initialization
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-
-    def forward(self, protein_feat):
-        # Data augmentation
-        if self.training and self.augment_eps > 0:
-            protein_feat = protein_feat + self.augment_eps * torch.randn_like(protein_feat)
-
-        h_V = self.input_block(protein_feat)
-        h_V = self.hidden_block(h_V)
-
-        for layer in self.encoder_layers:
-            h_V = layer(h_V)
-
-        return h_V
-
-
-class IonClassifier(nn.Module):
-    def __init__(self, hidden_dim=128):
-        super(IonClassifier, self).__init__()
 
         # ion-specific layers
         # ['Ca', 'Co', 'Cu', 'Fe2', 'Fe', 'Mg', 'Mn', 'PO4', 'SO4', 'Zn']
@@ -156,9 +132,24 @@ class IonClassifier(nn.Module):
         self.FC_ZN_2 = nn.Linear(hidden_dim, 1, bias=True)
         self.FC_NULL_1 = nn.Linear(hidden_dim, hidden_dim, bias=True)
         self.FC_NULL_2 = nn.Linear(hidden_dim, 1, bias=True)
+  
+        # Initialization
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform_(p)
 
-    def forward(self, h_V):
-        # ['Ca', 'Co', 'Cu', 'Fe2', 'Fe', 'Mg', 'Mn', 'PO4', 'SO4', 'Zn']
+
+    def forward(self, protein_feat):
+        # Data augmentation
+        if self.training and self.augment_eps > 0:
+            protein_feat = protein_feat + self.augment_eps * torch.randn_like(protein_feat)
+
+        h_V = self.input_block(protein_feat)
+        h_V = self.hidden_block(h_V)
+
+        for layer in self.encoder_layers:
+            h_V = layer(h_V)
+
         logits_CA = self.FC_CA_2(F.leaky_relu(self.FC_CA_1(h_V)))
         logits_CO = self.FC_CO_2(F.leaky_relu(self.FC_CO_1(h_V)))
         logits_CU = self.FC_CU_2(F.leaky_relu(self.FC_CU_1(h_V)))
@@ -174,3 +165,33 @@ class IonClassifier(nn.Module):
         logits = torch.cat((logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN, logits_NULL), 1)
         
         return logits
+
+    def projector(self, protein_feat):
+        if self.training and self.augment_eps > 0:
+            protein_feat = protein_feat + self.augment_eps * torch.randn_like(protein_feat)
+
+        h_V = self.input_block(protein_feat)
+        h_V = self.hidden_block(h_V)
+
+        for layer in self.encoder_layers:
+            h_V = layer(h_V)
+
+        return h_V
+
+    def classifier(self, h_V):
+        logits_CA = self.FC_CA_2(F.leaky_relu(self.FC_CA_1(h_V)))
+        logits_CO = self.FC_CO_2(F.leaky_relu(self.FC_CO_1(h_V)))
+        logits_CU = self.FC_CU_2(F.leaky_relu(self.FC_CU_1(h_V)))
+        logits_FE2 = self.FC_FE2_2(F.leaky_relu(self.FC_FE2_1(h_V)))
+        logits_FE = self.FC_FE_2(F.leaky_relu(self.FC_FE_1(h_V))) 
+        logits_MG = self.FC_MG_2(F.leaky_relu(self.FC_MG_1(h_V)))
+        logits_MN = self.FC_MN_2(F.leaky_relu(self.FC_MN_1(h_V)))
+        logits_PO4 = self.FC_PO4_2(F.leaky_relu(self.FC_PO4_1(h_V)))
+        logits_SO4 = self.FC_SO4_2(F.leaky_relu(self.FC_SO4_1(h_V)))
+        logits_ZN = self.FC_ZN_2(F.leaky_relu(self.FC_ZN_1(h_V)))
+        logits_NULL = self.FC_NULL_2(F.leaky_relu(self.FC_NULL_1(h_V)))
+
+        logits = torch.cat((logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN, logits_NULL), 1)
+        
+        return logits
+        

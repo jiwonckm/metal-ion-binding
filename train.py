@@ -2,7 +2,7 @@ import torch
 import torchvision
 from datetime import datetime
 from dataloader import MionicDataset, MionicDatamodule, ConDatamodule
-from model import TransformerEncoder, IonClassifier
+from model import IonBindingModel
 from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 import torch.nn as nn
 import torch.nn.functional as F
@@ -80,13 +80,11 @@ def main(config):
     contrastive_generator = cdm.train_dataloader()
     
     # Model and Optimizer
-    cmodel = TransformerEncoder()
-    cmodel = cmodel.to(device)
+    model = IonBindingModel()
+    model = model.to(device)
+    
     closs_fn = MarginScheduledLossFunction()
     coptimizer = torch.optim.AdamW(cmodel.parameters(), lr=config.clr)
-
-    model = IonClassifier()
-    model = model.to(device)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
 
@@ -108,16 +106,15 @@ def main(config):
     
     for epoch in range(EPOCHS):
         print('EPOCH {}:'.format(epoch))
-
+        model.train(True)
         # Contrastive Step
         if config.contrastive:
-            cmodel.train(True)
             for i, batch in tqdm(enumerate(contrastive_generator), total=len(contrastive_generator)):
                 pos1, pos2, neg = batch
                 
-                pos1 = cmodel(pos1.to(device))
-                pos2 = cmodel(pos2.to(device))
-                neg = cmodel(neg.to(device))
+                pos1 = model.projector(pos1.to(device))
+                pos2 = model.projector(pos2.to(device))
+                neg = model.projector(neg.to(device))
                 
                 contrastive_loss = closs_fn(pos1, pos2, neg)
 
@@ -126,20 +123,18 @@ def main(config):
                 coptimizer.step()
                 
             closs_fn.step()
-            cmodel.train(False)
 
         # Classifier Training Step
-        model.train(True)
         n = 0
         avg_loss = 0
         
         for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
             
             inputs, labels = data
-            inputs = cmodel(inputs.to(device))
+            inputs = model.projector(inputs.to(device))
             labels = labels.to(device)
             
-            outputs = model(inputs)
+            outputs = model.classifier(inputs)
 
             loss = loss_fn(outputs, labels)
 
@@ -176,7 +171,7 @@ def main(config):
         with torch.no_grad():
             for i, vdata in enumerate(val_loader):
                 vinputs, vlabels = data
-                vinputs = cmodel(vinputs.to(device))
+                vinputs = vinputs.to(device)
                 vlabels = vlabels.to(device)
                 
                 voutputs = model(vinputs)
