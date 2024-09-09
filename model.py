@@ -82,7 +82,7 @@ class TransformerLayer(nn.Module):
 
 class IonBindingModel(nn.Module):
     def __init__(self, feature_dim=2560, hidden_dim=128, num_encoder_layers=4, num_heads=4, augment_eps=0.05, dropout=0.2):
-        super(TransformerEncoder, self).__init__()
+        super(IonBindingModel, self).__init__()
 
         # Hyperparameters
         self.augment_eps = augment_eps
@@ -140,33 +140,9 @@ class IonBindingModel(nn.Module):
 
 
     def forward(self, protein_feat):
-        # Data augmentation
-        if self.training and self.augment_eps > 0:
-            protein_feat = protein_feat + self.augment_eps * torch.randn_like(protein_feat)
+        return self.classify(protein_feat)
 
-        h_V = self.input_block(protein_feat)
-        h_V = self.hidden_block(h_V)
-
-        for layer in self.encoder_layers:
-            h_V = layer(h_V)
-
-        logits_CA = self.FC_CA_2(F.leaky_relu(self.FC_CA_1(h_V)))
-        logits_CO = self.FC_CO_2(F.leaky_relu(self.FC_CO_1(h_V)))
-        logits_CU = self.FC_CU_2(F.leaky_relu(self.FC_CU_1(h_V)))
-        logits_FE2 = self.FC_FE2_2(F.leaky_relu(self.FC_FE2_1(h_V)))
-        logits_FE = self.FC_FE_2(F.leaky_relu(self.FC_FE_1(h_V))) 
-        logits_MG = self.FC_MG_2(F.leaky_relu(self.FC_MG_1(h_V)))
-        logits_MN = self.FC_MN_2(F.leaky_relu(self.FC_MN_1(h_V)))
-        logits_PO4 = self.FC_PO4_2(F.leaky_relu(self.FC_PO4_1(h_V)))
-        logits_SO4 = self.FC_SO4_2(F.leaky_relu(self.FC_SO4_1(h_V)))
-        logits_ZN = self.FC_ZN_2(F.leaky_relu(self.FC_ZN_1(h_V)))
-        logits_NULL = self.FC_NULL_2(F.leaky_relu(self.FC_NULL_1(h_V)))
-
-        logits = torch.cat((logits_CA, logits_CO, logits_CU, logits_FE2, logits_FE, logits_MG, logits_MN, logits_PO4, logits_SO4, logits_ZN, logits_NULL), 1)
-        
-        return logits
-
-    def projector(self, protein_feat):
+    def project(self, protein_feat):
         if self.training and self.augment_eps > 0:
             protein_feat = protein_feat + self.augment_eps * torch.randn_like(protein_feat)
 
@@ -178,7 +154,9 @@ class IonBindingModel(nn.Module):
 
         return h_V
 
-    def classifier(self, h_V):
+    def classify(self, protein_feat):
+        h_V = self.project(protein_feat)
+        
         logits_CA = self.FC_CA_2(F.leaky_relu(self.FC_CA_1(h_V)))
         logits_CO = self.FC_CO_2(F.leaky_relu(self.FC_CO_1(h_V)))
         logits_CU = self.FC_CU_2(F.leaky_relu(self.FC_CU_1(h_V)))

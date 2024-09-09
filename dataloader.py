@@ -13,9 +13,10 @@ import random
 ions = ['CA','CO','CU','FE2', 'FE', 'MG', 'MN', 'PO4', 'SO4', 'ZN']
 
 class MionicDataset(Dataset):
-    def __init__(self, csv_file, rep_dir, truth_dir):
+    def __init__(self, csv_file, rep_dir, truth_dir, num_samples=None):
         self.data = pd.read_csv(csv_file)
-        self.data = self.data.sample(n = 5000, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN. total sample num = 26407
+        if num_samples:
+            self.data = self.data.sample(n = num_samples, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN. total sample num = 21736
         self.truth_vals = pk.load(open(truth_dir, 'rb'))
         self.rep_dir = rep_dir
 
@@ -77,33 +78,18 @@ def collate_fn(batch):
     labels = torch.stack(labels, 0)
     
     return features, labels
-
-# class SubsetWithAttributes(Subset):
-#     def __init__(self, dataset, indices):
-#         super().__init__(dataset, indices)
-#         self.dataset = dataset
-#         self.indices = indices
-
-#     @property
-#     def labels(self):
-#         return [self.dataset.labels[i] for i in self.indices]
-#     @property
-#     def ids(self):
-#         return [self.dataset.ids[i] for i in self.indices]
     
 class MionicDatamodule(L.LightningDataModule):
-    def __init__(self, dataset, batch_size, shuffle, num_samples):
+    def __init__(self, dataset, batch_size, shuffle):
         super().__init__()
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.num_samples = num_samples
         
     def setup(self):
-        self.train_set, self.val_set, self.test_set = random_split(self.dataset, [0.8, 0.1, 0.1], generator=torch.Generator().manual_seed(42))
-
+        
         # Balance the data
-        train_labels = torch.stack([self.train_set.dataset.labels[self.train_set.dataset.ids[i]] for i in self.train_set.indices])
+        train_labels = torch.stack(list(self.dataset.labels.values()), dim=0)
         ion_count = torch.sum(train_labels, dim=0)                        # 11-d vector of count of each ions
         ion_weight = 1 / ion_count
         
@@ -112,18 +98,12 @@ class MionicDatamodule(L.LightningDataModule):
             weight = torch.sum(row * ion_weight)
             weights.append(weight)
         weights = torch.tensor(weights)
-        self.sampler = WeightedRandomSampler(weights=weights, num_samples=len(self.train_set), replacement=True)
+        self.sampler = WeightedRandomSampler(weights=weights, num_samples=len(self.dataset), replacement=True)
 
         # return ion_weight
 
-    def train_dataloader(self):
-        return DataLoader(self.train_set, batch_size=self.batch_size, collate_fn=collate_fn, sampler=self.sampler)
-
-    def val_dataloader(self):
-        return DataLoader(self.val_set, batch_size=self.batch_size, collate_fn=collate_fn)
-
-    def test_dataloader(self):
-        return DataLoader(self.test_set, batch_size=self.batch_size, collate_fn=collate_fn)
+    def dataloader(self):
+        return DataLoader(self.dataset, batch_size=self.batch_size, collate_fn=collate_fn, sampler=self.sampler)
 
 class ConDataset(Dataset):
     def __init__(self, dataset):
@@ -161,27 +141,20 @@ class ConDataset(Dataset):
         return batch
 
 class ConDatamodule(L.LightningDataModule):
-    def __init__(self, dataset, batch_size, shuffle, num_samples):
+    def __init__(self, dataset, batch_size, shuffle, con_num_samples):
         super().__init__()
         self.dataset = ConDataset(dataset)
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.num_samples = num_samples
+        self.con_num_samples = con_num_samples
         
     def setup(self):
-        indices = np.random.choice(len(self.dataset), self.num_samples, replace=False)
-        sampled_dataset = Subset(self.dataset, indices)
+        # there are too many samples, so we are randomly selecting con_num_samples
+        indices = np.random.choice(len(self.dataset), self.con_num_samples, replace=False) 
+        self.sampled_dataset = Subset(self.dataset, indices)
 
-        self.train_set, self.val_set, self.test_set = random_split(sampled_dataset, [0.8, 0.1, 0.1], generator=torch.Generator().manual_seed(42))
-
-    def train_dataloader(self):
-        return DataLoader(self.train_set, batch_size=self.batch_size)
-
-    def val_dataloader(self):
-        return DataLoader(self.val_set, batch_size=self.batch_size)
-
-    def test_dataloader(self):
-        return DataLoader(self.test_set, batch_size=self.batch_size)
+    def dataloader(self):
+        return DataLoader(self.sampled_dataset, batch_size=self.batch_size)
 
 
 if __name__ == '__main__':

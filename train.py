@@ -16,45 +16,6 @@ from margin import MarginScheduledLossFunction
 
 ions = ['Ca', 'Co', 'Cu', 'Fe2', 'Fe', 'Mg', 'Mn', 'PO4', 'SO4', 'Zn', 'Null']
 
-# def train_one_epoch(epoch_index, device, model, train_loader, loss_fn, optimizer):
-#     metric = MultilabelAveragePrecision(num_labels=len(ions), average=None, thresholds=None)
-#     metric.to(device)
-#     batch_metric = MultilabelAveragePrecision(num_labels=len(ions), average=None, thresholds=None)
-#     batch_metric.to(device)
-
-#     n = 0
-#     avg_loss = 0
-    
-#     for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
-        
-#         inputs, labels = data
-#         inputs = inputs.to(device)
-#         labels = labels.to(device)
-#         optimizer.zero_grad()
-        
-#         outputs = model(inputs)
-        
-#         loss = loss_fn(outputs, labels)
-#         loss.backward()
-#         optimizer.step()
-#         loss = loss.item()
-
-#         b = len(inputs)
-#         n += b
-#         delta = b * (loss - avg_loss)
-#         avg_loss += delta / n
-        
-#         labels = labels.to(torch.int64)
-#         aupr = metric(outputs, labels)
-        
-#         if i%100 == 99:
-#             print('   batch {} loss: {}'.format(i+1, avg_loss))
-#             x = {'train/batch_loss': avg_loss}
-#             wandb.log(x)
-            
-#     aupr = metric.compute()
-#     return avg_loss, aupr
-
 def main(config):
     
     # Set CUDA device
@@ -66,25 +27,32 @@ def main(config):
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     # Load DataLoaders
-    dataset = MionicDataset(config.data_dir, config.rep_dir, config.truth_dir)
-    dm = MionicDatamodule(dataset, config.batch_size, config.shuffle, config.num_samples)
-    dm.setup()
+    train_dataset = MionicDataset(config.train_data_dir, config.rep_dir, config.truth_dir, config.num_samples)
+    train_dm = MionicDatamodule(train_dataset, config.batch_size, config.shuffle)
+    train_dm.setup()
     # ion_weights = dm.setup()
     # ion_weights = ion_weights.to(device)
-    train_loader = dm.train_dataloader()
-    val_loader = dm.val_dataloader()
-    test_loader = dm.test_dataloader()
+    train_loader = train_dm.dataloader()
+
+    val_dataset = MionicDataset(config.val_data_dir, config.rep_dir, config.truth_dir)
+    val_dm = MionicDatamodule(val_dataset, config.batch_size, config.shuffle)
+    val_dm.setup()
+    val_loader = val_dm.dataloader()
     
-    cdm = ConDatamodule(dataset, config.batch_size, config.shuffle, config.con_num_samples)
-    cdm.setup()
-    contrastive_generator = cdm.train_dataloader()
+    train_cdm = ConDatamodule(train_dataset, config.batch_size, config.shuffle, config.con_num_samples)
+    train_cdm.setup()
+    train_contrastive_generator = train_cdm.dataloader()
+
+    # val_cdm = ConDatamodule(val_dataset, config.batch_size, config.shuffle, config.con_num_samples)
+    # val_cdm.setup()
+    # val_contrastive_generator = val_cdm.dataloader()
     
     # Model and Optimizer
     model = IonBindingModel()
     model = model.to(device)
     
     closs_fn = MarginScheduledLossFunction()
-    coptimizer = torch.optim.AdamW(cmodel.parameters(), lr=config.clr)
+    coptimizer = torch.optim.AdamW(model.parameters(), lr=config.clr)
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
 
@@ -109,12 +77,12 @@ def main(config):
         model.train(True)
         # Contrastive Step
         if config.contrastive:
-            for i, batch in tqdm(enumerate(contrastive_generator), total=len(contrastive_generator)):
+            for i, batch in tqdm(enumerate(train_contrastive_generator), total=len(train_contrastive_generator)):
                 pos1, pos2, neg = batch
                 
-                pos1 = model.projector(pos1.to(device))
-                pos2 = model.projector(pos2.to(device))
-                neg = model.projector(neg.to(device))
+                pos1 = model.project(pos1.to(device))
+                pos2 = model.project(pos2.to(device))
+                neg = model.project(neg.to(device))
                 
                 contrastive_loss = closs_fn(pos1, pos2, neg)
 
@@ -131,10 +99,8 @@ def main(config):
         for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
             
             inputs, labels = data
-            inputs = model.projector(inputs.to(device))
             labels = labels.to(device)
-            
-            outputs = model.classifier(inputs)
+            outputs = model(inputs.to(device))
 
             loss = loss_fn(outputs, labels)
 
