@@ -34,18 +34,14 @@ def main(config):
     # ion_weights = ion_weights.to(device)
     train_loader = train_dm.dataloader()
 
-    val_dataset = MionicDataset(config.val_data_dir, config.rep_dir, config.truth_dir)
+    val_dataset = MionicDataset(config.val_data_dir, config.rep_dir, config.truth_dir, config.val_num_samples)
     val_dm = MionicDatamodule(val_dataset, config.batch_size, config.shuffle)
     val_dm.setup()
     val_loader = val_dm.dataloader()
     
-    train_cdm = ConDatamodule(train_dataset, config.batch_size, config.shuffle, config.con_num_samples)
-    train_cdm.setup()
-    train_contrastive_generator = train_cdm.dataloader()
-
-    # val_cdm = ConDatamodule(val_dataset, config.batch_size, config.shuffle, config.con_num_samples)
-    # val_cdm.setup()
-    # val_contrastive_generator = val_cdm.dataloader()
+    cdm = ConDatamodule(train_dataset, config.batch_size, config.shuffle, config.con_num_samples)
+    cdm.setup()
+    con_generator = cdm.dataloader()
     
     # Model and Optimizer
     model = IonBindingModel()
@@ -77,7 +73,7 @@ def main(config):
         model.train(True)
         # Contrastive Step
         if config.contrastive:
-            for i, batch in tqdm(enumerate(train_contrastive_generator), total=len(train_contrastive_generator)):
+            for i, batch in tqdm(enumerate(con_generator), total=len(con_generator)):
                 pos1, pos2, neg = batch
                 
                 pos1 = model.project(pos1.to(device))
@@ -135,8 +131,8 @@ def main(config):
         val_metric.reset()
         
         with torch.no_grad():
-            for i, vdata in enumerate(val_loader):
-                vinputs, vlabels = data
+            for vdata in val_loader:
+                vinputs, vlabels = vdata
                 vinputs = vinputs.to(device)
                 vlabels = vlabels.to(device)
                 

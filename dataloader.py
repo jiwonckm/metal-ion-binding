@@ -13,10 +13,10 @@ import random
 ions = ['CA','CO','CU','FE2', 'FE', 'MG', 'MN', 'PO4', 'SO4', 'ZN']
 
 class MionicDataset(Dataset):
-    def __init__(self, csv_file, rep_dir, truth_dir, num_samples=None):
+    def __init__(self, csv_file, rep_dir, truth_dir, num_samples):
         self.data = pd.read_csv(csv_file)
-        if num_samples:
-            self.data = self.data.sample(n = num_samples, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN. total sample num = 21736
+        # if num_samples != None:
+        self.data = self.data.sample(n = num_samples, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN. total sample num = 21736
         self.truth_vals = pk.load(open(truth_dir, 'rb'))
         self.rep_dir = rep_dir
 
