@@ -1,9 +1,7 @@
 import torch
 import torchvision
-from datetime import datetime
 from dataloader import MionicDataset, MionicDatamodule, ConDatamodule
 from model import IonBindingModel
-from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSampler
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -11,24 +9,19 @@ from torchmetrics.classification import MultilabelAveragePrecision
 import wandb
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
-from torch.nn.utils.rnn import pad_sequence, pack_sequence, pad_packed_sequence
 from margin import MarginScheduledLossFunction
 import os
 
-ions = ['Ca', 'Co', 'Cu', 'Fe2', 'Fe', 'Mg', 'Mn', 'PO4', 'SO4', 'Zn', 'Null']
+ions = ['Ca', 'Co', 'Cu', 'Fe2', 'Fe', 'Mg', 'Mn', 'PO4', 'SO4', 'Zn']
+classes = ions + ['Null']
 
 def main(config):
-
-    # Create directory
-    os.makedirs('{}/{}'.format(config.model_save_dir, config.run_name), exist_ok=True)
     
     # Set CUDA device
     if (config.device == 'cpu') or (not torch.cuda.is_available()):
         device = torch.device('cpu')
     else:
         device = torch.device(f'cuda:{config.device}')
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     # Load DataLoaders
     train_dataset = MionicDataset(config.train_data_dir, config.rep_dir, config.truth_dir, config.num_samples)
@@ -60,12 +53,15 @@ def main(config):
     wandb.login()
     wandb.init(project=config.wandb_proj, name=config.run_name, config=dict(config))
 
+    # Create directory
+    os.makedirs('{}/{}'.format(config.model_save_dir, config.run_name), exist_ok=True)
+
     # Metric
-    metric = MultilabelAveragePrecision(num_labels=len(ions), average=None, thresholds=None)
+    metric = MultilabelAveragePrecision(num_labels=len(classes), average=None, thresholds=None)
     metric.to(device)
-    batch_metric = MultilabelAveragePrecision(num_labels=len(ions), average=None, thresholds=None)
+    batch_metric = MultilabelAveragePrecision(num_labels=len(classes), average=None, thresholds=None)
     batch_metric.to(device)
-    val_metric = MultilabelAveragePrecision(num_labels=len(ions), average=None, thresholds=None)
+    val_metric = MultilabelAveragePrecision(num_labels=len(classes), average=None, thresholds=None)
     val_metric.to(device)
 
     # Run training
@@ -126,7 +122,7 @@ def main(config):
         aupr = metric.compute()
 
         x = {'train/loss': avg_loss, 'epoch': epoch}
-        for i, ion in enumerate(ions):
+        for i, ion in enumerate(classes):
             x[f'train/aupr_{ion}'] = float(aupr[i])
         wandb.log(x)
         
@@ -157,16 +153,16 @@ def main(config):
         print('avg AUPR train {} valid {}'.format(torch.mean(aupr).item(), avg_vaupr))
 
         x = {'val/loss': avg_vloss, 'epoch': epoch}
-        for i, ion in enumerate(ions):
+        for i, ion in enumerate(classes):
             x[f'val/aupr_{ion}'] = float(vaupr[i])
         wandb.log(x)
     
         if avg_vaupr > best_vaupr:
             best_vaupr = avg_vaupr
-            model_path = '{}/{}/epoch{}'.format(config.model_save_dir, config.run_name, epoch)
+            model_path = '{}/{}/epoch{}_{}'.format(config.model_save_dir, config.run_name, epoch, round(avg_vaupr,3))
             torch.save(model.state_dict(), model_path)
         elif epoch%5 == 0:
-            model_path = '{}/{}/epoch{}'.format(config.model_save_dir, config.run_name, epoch)
+            model_path = '{}/{}/epoch{}_{}'.format(config.model_save_dir, config.run_name, epoch, round(avg_vaupr,3))
             torch.save(model.state_dict(), model_path)
     
     model.cpu()
