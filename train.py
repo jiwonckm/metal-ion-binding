@@ -13,10 +13,14 @@ from argparse import ArgumentParser
 from omegaconf import OmegaConf
 from torch.nn.utils.rnn import pad_sequence, pack_sequence, pad_packed_sequence
 from margin import MarginScheduledLossFunction
+import os
 
 ions = ['Ca', 'Co', 'Cu', 'Fe2', 'Fe', 'Mg', 'Mn', 'PO4', 'SO4', 'Zn', 'Null']
 
 def main(config):
+
+    # Create directory
+    os.makedirs('{}/{}'.format(config.model_save_dir, config.run_name), exist_ok=True)
     
     # Set CUDA device
     if (config.device == 'cpu') or (not torch.cuda.is_available()):
@@ -67,6 +71,7 @@ def main(config):
     # Run training
     EPOCHS = config.epochs
     best_vloss = 1_000_000
+    best_vaupr = -1
     
     for epoch in range(EPOCHS):
         print('EPOCH {}:'.format(epoch))
@@ -131,7 +136,7 @@ def main(config):
         val_metric.reset()
         
         with torch.no_grad():
-            for vdata in val_loader:
+            for i, vdata in tqdm(enumerate(val_loader), total=len(val_loader)):
                 vinputs, vlabels = vdata
                 vinputs = vinputs.to(device)
                 vlabels = vlabels.to(device)
@@ -147,17 +152,21 @@ def main(config):
                 vaupr = val_metric(voutputs, vlabels)
         
         vaupr = val_metric.compute()
+        avg_vaupr = torch.mean(vaupr).item()
         print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
-        print('avg AUPR train {} valid {}'.format(torch.mean(aupr).item(), torch.mean(vaupr).item()))
+        print('avg AUPR train {} valid {}'.format(torch.mean(aupr).item(), avg_vaupr))
 
         x = {'val/loss': avg_vloss, 'epoch': epoch}
         for i, ion in enumerate(ions):
             x[f'val/aupr_{ion}'] = float(vaupr[i])
         wandb.log(x)
     
-        if avg_vloss < best_vloss:
-            best_vloss = avg_vloss
-            model_path = '{}/model_{}_{}'.format(config.model_save_dir, timestamp, epoch)
+        if avg_vaupr > best_vaupr:
+            best_vaupr = avg_vaupr
+            model_path = '{}/{}/epoch{}'.format(config.model_save_dir, config.run_name, epoch)
+            torch.save(model.state_dict(), model_path)
+        elif epoch%5 == 0:
+            model_path = '{}/{}/epoch{}'.format(config.model_save_dir, config.run_name, epoch)
             torch.save(model.state_dict(), model_path)
     
     model.cpu()

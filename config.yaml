@@ -2,7 +2,9 @@
 wandb_proj: metal-ion-binding # Weights and Biases project to log results to.
 wandb_save: True # Whether or not to log to Weights and Biases.
 model_save_dir: ./best_models # Location to save best models
-data_dir: ../../Project/mionic_dataset/mionic_train.csv # Location of training data
+train_data_dir: ../../Project/mionic_dataset/mionic_train.csv # Location of training data
+data_dir: ../../Project/mionic_dataset/mionic_train.csv
+val_data_dir: ../../Project/mionic_dataset/mionic_val.csv
 rep_dir: ../../Project/mionic_dataset/train_embeddings/ # Location of ESM2 embeddings of each protein
 truth_dir: ../../Project/m-ionic/data/pos_data/multi_ion.pkl
 
@@ -11,7 +13,8 @@ epochs: 30 # Number of epochs to train for
 batch_size: 128 # Size of batch for binary data set
 shuffle: True # Whether to shuffle training data before batching
 clr: 1e-4 # contrastive step lr
-lr: 1e-5 # classifier step lr
+lr: 1e-4 # classifier step lr
 contrastive: True # Whether or not to do the contrastive step
 num_samples: 1000 # number of samples we want to look at for non-contrastive step
-con_num_samples: 1000
+val_num_samples: 125
+con_num_samples: 5000
