@@ -24,6 +24,7 @@ def main(config):
         device = torch.device(f'cuda:{config.device}')
 
     # Load DataLoaders
+    print('Loading datasets...\n')
     train_dataset = MionicDataset(config.train_data_dir, config.rep_dir, config.truth_dir, config.num_samples)
     train_dm = MionicDatamodule(train_dataset, config.batch_size, config.shuffle)
     train_dm.setup()
@@ -74,6 +75,7 @@ def main(config):
         model.train(True)
         # Contrastive Step
         if config.contrastive:
+            print('Contrastive step... \n')
             for i, batch in tqdm(enumerate(con_generator), total=len(con_generator)):
                 pos1, pos2, neg = batch
                 
@@ -92,7 +94,8 @@ def main(config):
         # Classifier Training Step
         n = 0
         avg_loss = 0
-        
+
+        print('Classifier step... \n')
         for i, data in tqdm(enumerate(train_loader), total=len(train_loader)):
             
             inputs, labels = data
@@ -132,6 +135,7 @@ def main(config):
         val_metric.reset()
         
         with torch.no_grad():
+            print('Validation... \n')
             for i, vdata in tqdm(enumerate(val_loader), total=len(val_loader)):
                 vinputs, vlabels = vdata
                 vinputs = vinputs.to(device)
@@ -159,10 +163,10 @@ def main(config):
     
         if avg_vaupr > best_vaupr:
             best_vaupr = avg_vaupr
-            model_path = '{}/{}/epoch{}_{}'.format(config.model_save_dir, config.run_name, epoch, round(avg_vaupr,3))
+            model_path = '{}/{}/epoch{}_{}.pt'.format(config.model_save_dir, config.run_name, epoch, round(avg_vaupr,3))
             torch.save(model.state_dict(), model_path)
         elif epoch%5 == 0:
-            model_path = '{}/{}/epoch{}_{}'.format(config.model_save_dir, config.run_name, epoch, round(avg_vaupr,3))
+            model_path = '{}/{}/epoch{}_{}.pt'.format(config.model_save_dir, config.run_name, epoch, round(avg_vaupr,3))
             torch.save(model.state_dict(), model_path)
     
     model.cpu()

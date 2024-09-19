@@ -9,16 +9,20 @@ import lightning as L
 import itertools
 import numpy as np
 import random
+from Bio import SeqIO
 
 ions = ['CA','CO','CU','FE2', 'FE', 'MG', 'MN', 'PO4', 'SO4', 'ZN']
 
 class MionicDataset(Dataset):
-    def __init__(self, csv_file, rep_dir, truth_dir, num_samples):
+    def __init__(self, csv_file, rep_dir, truth_dir, num_samples='ALL'):
         self.data = pd.read_csv(csv_file)
-        # if num_samples != None:
-        self.data = self.data.sample(n = num_samples, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN. total sample num = 21736
+        if num_samples != 'ALL':
+            self.data = self.data.sample(n = num_samples, replace=False)   # COMMENT OUT BEFORE ACTUAL RUN. total sample num = 21736
         self.truth_vals = pk.load(open(truth_dir, 'rb'))
         self.rep_dir = rep_dir
+        self.neg_samples_dir = '../../Project/m-ionic/data/neg_data/neg_samples.fasta'
+        neg_seqs = [record.id for record in SeqIO.parse(self.neg_samples_dir, "fasta")]
+        self.neg_seqs = tuple(neg_seqs)
 
         self.ids = []  # length: (protein * residue). all combinations of sequence id + residue number
         self.prot_rep = {} # key: sequence id, val: ESM2 representation
@@ -37,7 +41,9 @@ class MionicDataset(Dataset):
             for i in range(len(Seq)):
                 self.ids.append(f'{ID}_{i}')
 
-                if ID in self.truth_vals: # True if this protein binds to an ion at all
+                if ID in self.neg_seqs: # this is a negative protein sample
+                    labels = [0] * len(ions)
+                elif ID in self.truth_vals: # True if this protein binds to an ion at all
                     binding_ions = self.truth_vals[ID]['ions']
                     labels = []
                     for ion in ions:
@@ -46,7 +52,7 @@ class MionicDataset(Dataset):
                         else:
                             labels.append(int(binding_ions[ion][i]))
                             if int(binding_ions[ion][i]): self.reverse_labels[ion].append(f'{ID}_{i}')
-                                
+         
                 if sum(labels)==0:
                     labels.append(1)
                     self.reverse_labels['NULL'].append(f'{ID}_{i}')
@@ -67,7 +73,12 @@ class MionicDataset(Dataset):
         id = id[:last_underscore_index]
         
         protein_rep = self.prot_rep[id]         # shape: (residue #) x (1280)
-        residue_rep = protein_rep[residue, :]   # (1280)
+        try:
+            residue_rep = protein_rep[residue, :]   # (1280)
+        except:
+            print(id, residue)
+            print(protein_rep.shape)
+            return
         feature = torch.cat((residue_rep, torch.mean(protein_rep, dim=0)), dim=0)   # (1280 + 1280)
         
         return feature, labels
@@ -85,6 +96,7 @@ class MionicDatamodule(L.LightningDataModule):
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.sampler = None
         
     def setup(self):
         

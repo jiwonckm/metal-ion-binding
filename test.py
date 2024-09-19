@@ -24,7 +24,7 @@ def main(config):
         device = torch.device(f'cuda:{config.device}')
 
     # Load DataLoaders
-    test_dataset = MionicDataset(config.test_data_dir, config.test_rep_dir, config.truth_dir)
+    test_dataset = MionicDataset(config.test_data_dir, config.test_rep_dir, config.truth_dir, 1000)
     test_dm = MionicDatamodule(test_dataset, config.batch_size, shuffle=False)
     test_loader = test_dm.dataloader()
 
@@ -50,21 +50,24 @@ def main(config):
     
     aupr = metric.compute()
     avg_aupr = torch.mean(aupr).item()
-
-    print('Test AUPR for each ion: \n')
-    for i, ion in enumerate(classes):
-        print(f'{ion}: float(aupr[i])')
-    print('avg AUPR: ', avg_aupr)
+    
+    with open(f"test_results/{config.file_name}.txt", "w") as file:
+        file.write('Test AUPR for each ion:\n')
+        for i, ion in enumerate(classes):
+            file.write(f'{ion}: {float(aupr[i])}\n')
+        file.write(f'\nAvg AUPR: {avg_aupr}')
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Test')
     parser.add_argument('--model_dir', type=str, help='Directory of model')
+    parser.add_argument('--file_name', type=str, help='Directory of results file')
     parser.add_argument('--config', required=True, help='YAML config file')
     parser.add_argument('--device', required=True, help='Specify device')
 
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
     config.model_dir = args.model_dir
+    config.file_name = args.file_name
     config.device = args.device
     
     main(config)
