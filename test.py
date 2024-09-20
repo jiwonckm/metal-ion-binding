@@ -9,7 +9,6 @@ from torchmetrics.classification import MultilabelAveragePrecision
 import wandb
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
-from margin import MarginScheduledLossFunction
 import os
 
 ions = ['Ca', 'Co', 'Cu', 'Fe2', 'Fe', 'Mg', 'Mn', 'PO4', 'SO4', 'Zn']

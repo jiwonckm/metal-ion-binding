@@ -27,7 +27,7 @@ class MionicDataset(Dataset):
         self.ids = []  # length: (protein * residue). all combinations of sequence id + residue number
         self.prot_rep = {} # key: sequence id, val: ESM2 representation
         self.labels = {} # key: sequence id + residue number, val: binary vector
-        self.reverse_labels = {'NULL':[]} # key: each ion, val: sequence id + residue that binds to that ion
+        self.reverse_labels = {'NULL':[]} # key: each ion, val: index of 'sequence id+residue' that binds to that ion
         
         for ion in ions:
             self.reverse_labels[ion] = []
@@ -51,11 +51,12 @@ class MionicDataset(Dataset):
                             labels.append(0)
                         else:
                             labels.append(int(binding_ions[ion][i]))
-                            if int(binding_ions[ion][i]): self.reverse_labels[ion].append(f'{ID}_{i}')
+                            if int(binding_ions[ion][i]):
+                                self.reverse_labels[ion].append(len(self.ids)-1)
          
                 if sum(labels)==0:
                     labels.append(1)
-                    self.reverse_labels['NULL'].append(f'{ID}_{i}')
+                    self.reverse_labels['NULL'].append(len(self.ids)-1)
                 else: labels.append(0)
                 labels = torch.tensor(labels, dtype=torch.float32)
          
@@ -73,12 +74,7 @@ class MionicDataset(Dataset):
         id = id[:last_underscore_index]
         
         protein_rep = self.prot_rep[id]         # shape: (residue #) x (1280)
-        try:
-            residue_rep = protein_rep[residue, :]   # (1280)
-        except:
-            print(id, residue)
-            print(protein_rep.shape)
-            return
+        residue_rep = protein_rep[residue, :]   # (1280)
         feature = torch.cat((residue_rep, torch.mean(protein_rep, dim=0)), dim=0)   # (1280 + 1280)
         
         return feature, labels
@@ -98,8 +94,7 @@ class MionicDatamodule(L.LightningDataModule):
         self.shuffle = shuffle
         self.sampler = None
         
-    def setup(self):
-        
+    def balance(self):
         # Balance the data
         train_labels = torch.stack(list(self.dataset.labels.values()), dim=0)
         ion_count = torch.sum(train_labels, dim=0)                        # 11-d vector of count of each ions
@@ -111,8 +106,6 @@ class MionicDatamodule(L.LightningDataModule):
             weights.append(weight)
         weights = torch.tensor(weights)
         self.sampler = WeightedRandomSampler(weights=weights, num_samples=len(self.dataset), replacement=True)
-
-        # return ion_weight
 
     def dataloader(self):
         return DataLoader(self.dataset, batch_size=self.batch_size, collate_fn=collate_fn, sampler=self.sampler)

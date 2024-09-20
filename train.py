@@ -27,14 +27,13 @@ def main(config):
     print('Loading datasets...\n')
     train_dataset = MionicDataset(config.train_data_dir, config.rep_dir, config.truth_dir, config.num_samples)
     train_dm = MionicDatamodule(train_dataset, config.batch_size, config.shuffle)
-    train_dm.setup()
+    train_dm.balance()
     # ion_weights = dm.setup()
     # ion_weights = ion_weights.to(device)
     train_loader = train_dm.dataloader()
 
     val_dataset = MionicDataset(config.val_data_dir, config.rep_dir, config.truth_dir, config.val_num_samples)
     val_dm = MionicDatamodule(val_dataset, config.batch_size, config.shuffle)
-    val_dm.setup()
     val_loader = val_dm.dataloader()
     
     cdm = ConDatamodule(train_dataset, config.batch_size, config.shuffle, config.con_num_samples)
@@ -119,14 +118,14 @@ def main(config):
             
             if i%100 == 99:
                 print('   batch {} loss: {}'.format(i+1, avg_loss))
-                x = {'train/batch_loss': avg_loss}
-                wandb.log(x)
+                # x = {'train/batch_loss': avg_loss}
+                # wandb.log(x)
                 
         aupr = metric.compute()
 
         x = {'train/loss': avg_loss, 'epoch': epoch}
-        for i, ion in enumerate(classes):
-            x[f'train/aupr_{ion}'] = float(aupr[i])
+        # for i, ion in enumerate(classes):
+        #     x[f'train/aupr_{ion}'] = float(aupr[i])
         wandb.log(x)
         
         # Validation
@@ -168,7 +167,8 @@ def main(config):
         elif epoch%5 == 0:
             model_path = '{}/{}/epoch{}_{}.pt'.format(config.model_save_dir, config.run_name, epoch, round(avg_vaupr,3))
             torch.save(model.state_dict(), model_path)
-    
+    model_path = '{}/{}/final.pt'.format(config.model_save_dir, config.run_name)
+    torch.save(model.state_dict(), model_path)
     model.cpu()
 
 if __name__ == "__main__":
